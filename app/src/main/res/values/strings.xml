@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Media Timer</string>
+    <string name="media_timer_app">Media Timer App</string>
+    <string name="home_screen_title">Home</string>
+    <string name="settings_screen_title">Settings</string>
+    <string name="timer_screen_title">Timer</string>
+    <string name="timer_settings">Timer settings</string>
+    <string name="maximum_timer_duration">Maximum timer duration</string>
+    <string name="current_minute">%1$d</string>
+    <string name="maximum_available">Set the maximum duration available when setting a timer</string>
+    <string name="timer_active">Timer Active</string>
+    <string name="media_will_stop_in">Media will stop in</string>
+    <string name="cancel_timer">Cancel timer</string>
+    <string name="start_timer">Start timer</string>
+    <string name="pause_timer">Pause timer</string>
+    <string name="resume_timer">Resume timer</string>
+    <string name="set_timer_to_stop_all_media">Set a timer to stop all media</string>
+
+    <string name="daily">Daily</string>
+    <string name="days_of_the_week">Days of the week</string>
+    <string name="weekend">Weekend</string>
+</resources>
