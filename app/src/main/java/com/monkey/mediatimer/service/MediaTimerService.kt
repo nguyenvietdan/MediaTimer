@@ -105,6 +105,7 @@ class MediaTimerService : Service() {
 
     override fun onDestroy() {
         timer?.cancel()
+        MediaTimerService.timerState = MutableStateFlow<TimerState>(TimerState.Inactive)
         super.onDestroy()
     }
 
