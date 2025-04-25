@@ -243,15 +243,6 @@ class BatteryOptimizationManager @Inject constructor(
     }
 
     companion object {
-        /*        private const val PREFERENCES_NAME = "battery_optimization_preferences"
-                private const val KEY_ENABLE_OPTIMIZATIONS = "enable_battery_optimizations"
-                private const val KEY_REDUCE_BRIGHTNESS = "reduce_brightness_on_low_battery"
-                private const val KEY_LOW_BATTERY_BRIGHTNESS = "low_battery_brightness_level"
-                private const val KEY_LIMIT_TIMER_DURATION = "limit_timer_duration_on_low_battery"
-                private const val KEY_LOW_BATTERY_MAX_TIMER_DEFAULT = "low_battery_max_timer_duration"
-                private const val KEY_ORIGINAL_BRIGHTNESS = "original_brightness"
-                private const val KEY_LOW_BATTERY_MAX_TIMER = "current_low_battery_max_timer"*/
-
         private const val LOW_BATTERY_THRESHOLD = 20 // Pin dưới 20% được coi là yếu
     }
 }

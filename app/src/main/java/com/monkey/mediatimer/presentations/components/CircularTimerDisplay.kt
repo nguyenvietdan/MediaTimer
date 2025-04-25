@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monkey.mediatimer.R
+import com.monkey.mediatimer.presentations.theme.TimerGreen
+import com.monkey.mediatimer.presentations.theme.TimerRed
+import com.monkey.mediatimer.presentations.theme.TimerYellow
 import com.monkey.mediatimer.utils.formatTimeDisplay
 import kotlin.math.min
 
@@ -44,11 +47,17 @@ fun CircularTimerDisplay(
     isRunning: Boolean = false,
     animationDurationMillis: Int = 0,
     circleSize: Dp = 200.dp,
+    bottomSpace: Dp = 0.dp,
     onPauseResume: () -> Unit = {},
     onStop: () -> Unit = {},
 ) {
     val animatedProgress = remember { Animatable(1f) }
     val progress = if (totalTime > 0) timeRemaining.toFloat() / totalTime else 0f
+    val timerColor = when {
+        timeRemaining < totalTime / 3 -> TimerRed
+        timeRemaining < totalTime * 2 / 3 -> TimerYellow
+        else -> TimerGreen
+    }
     LaunchedEffect(progress) {
         animatedProgress.animateTo(
             targetValue = progress,
@@ -72,7 +81,7 @@ fun CircularTimerDisplay(
                 )
                 val arcSize = Size(width = diameter, height = diameter)
                 drawArc(
-                    color = Color.Gray/*MaterialTheme.colorScheme.surfaceVariant*/,
+                    color = Color.Gray.copy(alpha = 0.2f)/*MaterialTheme.colorScheme.surfaceVariant*/,
                     startAngle = 0f,
                     sweepAngle = 360f,
                     useCenter = false,
@@ -81,7 +90,7 @@ fun CircularTimerDisplay(
                     style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                 )
                 drawArc(
-                    color = Color.Red/*MaterialTheme.colorScheme.primary*/,
+                    color = timerColor/*MaterialTheme.colorScheme.primary*/,
                     startAngle = -90f,
                     sweepAngle = 360f * animatedProgress.value,
                     useCenter = false,
@@ -97,7 +106,8 @@ fun CircularTimerDisplay(
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
-        Spacer(modifier = Modifier.height(62.dp))
+        Spacer(modifier = Modifier.height(bottomSpace))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Row(
             horizontalArrangement = Arrangement.Center,

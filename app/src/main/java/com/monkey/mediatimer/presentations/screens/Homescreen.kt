@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -53,17 +56,9 @@ fun Homescreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    //val remainTimer by homeViewModel.remainTimer.collectAsState()
     val mediaSessions by homeViewModel.mediaSessions.collectAsState()
 
     Log.e("dan.nv", "Homescreen: checking for mediaSession ${mediaSessions}")
-
-    /*LaunchedEffect(remainTimer) {
-        while (remainTimer > 0) {
-            delay(1000)
-            homeViewModel.updateRemainTimer()
-        }
-    }*/
 
     Scaffold(
         topBar = {
@@ -99,10 +94,7 @@ fun Homescreen(
         HomeContent(
             paddingValues = paddingValue,
             homeViewModel = homeViewModel,
-            timerViewModel = timerViewModel/*,
-            onPlayPause = { packageName -> homeViewModel.togglePlayPauseState(packageName) },
-            onStop = { packageName -> homeViewModel.stopMedia(packageName) },
-            onVolumeChanged = { packageName -> homeViewModel.changeVolume(packageName) }*/
+            timerViewModel = timerViewModel
         )
 
     }
@@ -112,15 +104,9 @@ fun Homescreen(
 fun HomeContent(
     paddingValues: PaddingValues,
     homeViewModel: HomeViewModel,
-    timerViewModel: TimerViewModel/*,
-    onPlayPause: (String) -> Unit,
-    onStop: (String) -> Unit,
-    onVolumeChanged: (String) -> Unit*/
+    timerViewModel: TimerViewModel
 ) {
     val mediaInfos by homeViewModel.mediaSessions.collectAsState()
-    val timerState by timerViewModel.timerState.collectAsState()
-    val remainingTime by timerViewModel.remainTime.collectAsState()
-    Log.e("dan.nv", "HomeContent: ${mediaInfos.size}")
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -128,18 +114,12 @@ fun HomeContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         ActiveTimerScreen(timerViewModel, 200.dp)
-        /*if (timerState is TimerState.Active) {
-            ActiveTimerInfo(
-                timerState as TimerState.Active,
-                remainingTime,
-                onPauseResume = { timerViewModel.pauseOrResumeTimer() },
-                onStop = { timerViewModel.cancelTimer() })
-        }*/
         if (mediaInfos.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -182,6 +162,7 @@ fun HomeContent(
 fun ActiveTimerInfo(
     timerState: TimerState.Active,
     timeRemaining: Long,
+    bottomSpace: Dp = 0.dp,
     onPauseResume: () -> Unit,
     onStop: () -> Unit
 ) {
@@ -195,20 +176,4 @@ fun ActiveTimerInfo(
         onPauseResume = onPauseResume,
         onStop = onStop
     )
-    /*
-
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Timer Active",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "Media will stop in ${formatTimeDisplay(activeTimer)}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }*/
 }

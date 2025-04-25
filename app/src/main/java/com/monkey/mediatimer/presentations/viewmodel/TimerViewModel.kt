@@ -1,5 +1,6 @@
 package com.monkey.mediatimer.presentations.viewmodel
 
+import android.app.Application
 import android.content.Context
 import android.os.CountDownTimer
 import android.util.Log
@@ -10,10 +11,12 @@ import androidx.work.WorkManager
 import com.monkey.data.local.DefaultValue
 import com.monkey.domain.repository.SharedPreferenceRepository
 import com.monkey.domain.repository.SharedPreferenceRepository.Companion.KEY_END_TIME_MILLISECONDS
+import com.monkey.mediatimer.MediaTimerApplication
 import com.monkey.mediatimer.common.TimerState
 import com.monkey.mediatimer.di.IoDispatcher
 import com.monkey.mediatimer.domain.StopMediaWorker
 import com.monkey.mediatimer.service.MediaTimerService
+import com.monkey.mediatimer.utils.isDebug
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,19 +25,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltViewModel
 class TimerViewModel @Inject constructor(
+    private val application: Application,
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val sharedPrefs: SharedPreferenceRepository
 ) : ViewModel() {
 
     private val TAG = "TimerViewModel"
-    private val isDebug = false
 
     private val _endTimeMilliseconds = MutableStateFlow(0L)// default 0 milliseconds
     val endTimeMilliseconds: StateFlow<Long> = _endTimeMilliseconds.asStateFlow()
@@ -49,25 +53,15 @@ class TimerViewModel @Inject constructor(
     private val _maxTimeDuration = MutableStateFlow(DefaultValue.DEFAULT_MAX_TIMER_DURATION)
     val maxTimeDuration: StateFlow<Long> = _maxTimeDuration.asStateFlow()
 
-    private val _timerState = MutableStateFlow<TimerState>(TimerState.Inactive)
-    val timerState: StateFlow<TimerState> = _timerState.asStateFlow()
+    val sharedViewModel: SharedViewModel by lazy {
+        (application as MediaTimerApplication).sharedViewModel
+    }
 
     private var timer: CountDownTimer? = null
 
     init {
         _endTimeMilliseconds.value = sharedPrefs.endTimeMilliseconds.value
         // init remain time if timer is active and running or paused.
-        if (_endTimeMilliseconds.value > System.currentTimeMillis() && MediaTimerService.timerState is TimerState.Active) {
-            val remainingTime = _endTimeMilliseconds.value - System.currentTimeMillis()
-            _selectedMinutes.value = TimeUnit.MILLISECONDS.toMinutes(remainingTime)
-            _timerState.value = MediaTimerService.timerState.value.copy()
-            if (MediaTimerService.timerState.value is TimerState.Running) {
-                executeTimer((_timerState.value as TimerState.Running).remainingMillis)
-            } else if (MediaTimerService.timerState.value is TimerState.Paused) {
-                _remainTime.value = (_timerState.value as TimerState.Paused).remainingMillis
-                timer?.cancel()
-            }
-        }
 
         observeTimerState()
 
@@ -81,10 +75,21 @@ class TimerViewModel @Inject constructor(
         }
     }
 
+    // observe timer state from shared view model to update remain time.
     private fun observeTimerState() {
         viewModelScope.launch(ioDispatcher) {
-            MediaTimerService.timerState.collect { timeState ->
-                Log.e(TAG, "observeMediaSession: ${timeState}" )
+            sharedViewModel.timerState.distinctUntilChanged { old, new ->
+                return@distinctUntilChanged old == new
+            }.collect { state ->
+                when (state) {
+                    is TimerState.Running -> {
+                        _remainTime.value = state.remainingMillis
+                    }
+                    is TimerState.Paused -> _remainTime.value = state.remainingMillis
+
+                    is TimerState.Inactive -> _remainTime.value = 0
+                    else -> {}
+                }
             }
         }
     }
@@ -113,7 +118,6 @@ class TimerViewModel @Inject constructor(
         if (isDebug) {
             requestStopMedia(TimeUnit.MINUTES.toMillis(_selectedMinutes.value))
         }
-        countDownRemainingTime(TimeUnit.MINUTES.toMillis(_selectedMinutes.value))
         // use coroutine to count down time instead of countdown timer because it's more flexible and easy to test.
         if (isDebug) {
             startCountDown(endTime)
@@ -124,16 +128,13 @@ class TimerViewModel @Inject constructor(
         _remainTime.value = 0L
         MediaTimerService.stopTimer(context)
         timer?.cancel()
-        _timerState.value = TimerState.Inactive
     }
 
     fun pauseOrResumeTimer() {
-        if (_timerState.value is TimerState.Running) {
+        if (sharedViewModel.timerState.value is TimerState.Running) {
             MediaTimerService.pauseTimer(context)
-            pauseTimer()
         } else {
             MediaTimerService.resumeTimer(context)
-            resumeTimer()
         }
     }
 
@@ -148,68 +149,6 @@ class TimerViewModel @Inject constructor(
                 _remainTime.value = remainingMillis
                 delay(1000) // update every seconds
             }
-        }
-    }
-
-    private fun countDownRemainingTime(durationMillis: Long) {
-        timer?.cancel()
-        val startTimer = System.currentTimeMillis()
-        val endTimer = durationMillis + startTimer
-        _timerState.value = TimerState.Running(
-            startTimeMillis = startTimer,
-            endTimeMillis = endTimer,
-            remainingMillis = durationMillis,
-            totalDurationMillis = durationMillis,
-            useSleepMode = false
-        )
-        executeTimer(durationMillis)
-    }
-
-    private fun resumeTimer() {
-        val currentState = _timerState.value
-        if (currentState is TimerState.Paused) {
-            val newEndTimeMillis = System.currentTimeMillis() + currentState.remainingMillis
-            _timerState.value = TimerState.Running(
-                startTimeMillis = currentState.startTimeMillis,
-                endTimeMillis = newEndTimeMillis,
-                remainingMillis = currentState.remainingMillis,
-                totalDurationMillis = currentState.totalDurationMillis,
-                useSleepMode = currentState.useSleepMode
-            )
-            executeTimer(currentState.remainingMillis)
-        }
-    }
-
-    private fun executeTimer(durationMillis: Long) {
-        Log.i(TAG, "executeTimer: $durationMillis")
-        timer = object : CountDownTimer(durationMillis, 1000) {
-            override fun onTick(millisUntilFinished: Long) {
-                val currentState = _timerState.value
-                if (currentState is TimerState.Running) {
-                    _timerState.value = currentState.copy(remainingMillis = millisUntilFinished)
-                    _remainTime.value = millisUntilFinished
-                }
-            }
-
-            override fun onFinish() {
-                _remainTime.value = 0L
-                _timerState.value = TimerState.Inactive
-            }
-        }
-        timer?.start()
-    }
-
-    private fun pauseTimer() {
-        val currentState = _timerState.value
-        if (currentState is TimerState.Running) {
-            _timerState.value = TimerState.Paused(
-                startTimeMillis = currentState.startTimeMillis,
-                pausedAtMillis = System.currentTimeMillis(),
-                remainingMillis = currentState.remainingMillis,
-                totalDurationMillis = currentState.totalDurationMillis,
-                useSleepMode = currentState.useSleepMode
-            )
-            timer?.cancel()
         }
     }
 

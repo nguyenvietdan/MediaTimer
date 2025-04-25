@@ -19,6 +19,7 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import com.monkey.domain.repository.SharedPreferenceRepository
+import com.monkey.mediatimer.MediaTimerApplication
 import com.monkey.mediatimer.common.TimerState
 import com.monkey.mediatimer.di.SharedPreferenceRepositoryEntryPoint
 import com.monkey.mediatimer.domain.MediaControllerManagerEntryPoint
@@ -28,9 +29,6 @@ import com.monkey.mediatimer.features.SleepModeManagerEntryPoint
 import com.monkey.mediatimer.presentations.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.EntryPointAccessors
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
@@ -42,13 +40,18 @@ class MediaTimerService : Service() {
     private lateinit var sleepModeManager: SleepModeManager
     private lateinit var sharedPrefs: SharedPreferenceRepository
 
-    private val _timerState = MutableStateFlow<TimerState>(TimerState.Inactive)
-    val timerState: StateFlow<TimerState> = _timerState.asStateFlow()
+    // TODO CONSIDER CHANGE FROM SHAREDVIEWMODEL
+    //private val _timerState = MutableStateFlow<TimerState>(TimerState.Inactive)
+    //val timerState: StateFlow<TimerState> = _timerState.asStateFlow()
+    //@Inject
+    //lateinit var sharedViewModel: SharedViewModel
+    private val sharedViewModel by lazy {
+        (application as MediaTimerApplication).sharedViewModel
+    }
 
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "onCreate: ")
-        MediaTimerService.timerState = _timerState.asStateFlow()
 
         val mediaControllerManagerEntryPoint = EntryPointAccessors.fromApplication(
             applicationContext,
@@ -105,7 +108,6 @@ class MediaTimerService : Service() {
 
     override fun onDestroy() {
         timer?.cancel()
-        MediaTimerService.timerState = MutableStateFlow<TimerState>(TimerState.Inactive)
         super.onDestroy()
     }
 
@@ -116,14 +118,14 @@ class MediaTimerService : Service() {
         val durationMillis = TimeUnit.MINUTES.toMillis(durationMinutes.toLong())
         val startTimeMillis = System.currentTimeMillis()
         val endTimeMillis = startTimeMillis + durationMillis
-
-        _timerState.value = TimerState.Running(
+        sharedViewModel.updateTimerState(TimerState.Running(
             startTimeMillis = startTimeMillis,
             endTimeMillis = endTimeMillis,
             remainingMillis = durationMillis,
             totalDurationMillis = durationMillis,
             useSleepMode = useSleepMode
-        )
+        ))
+
         if (useSleepMode) {
             sleepModeManager.activateSleepMode(durationMinutes)
         }
@@ -139,15 +141,15 @@ class MediaTimerService : Service() {
         Log.i(TAG, "pauseTimer: ")
         timer?.cancel()
 
-        val currentState = _timerState.value
+        val currentState = sharedViewModel.timerState.value
         if (currentState is TimerState.Running) {
-            _timerState.value = TimerState.Paused(
+            sharedViewModel.updateTimerState(TimerState.Paused(
                 startTimeMillis = currentState.startTimeMillis,
                 pausedAtMillis = System.currentTimeMillis(),
                 remainingMillis = currentState.remainingMillis,
                 totalDurationMillis = currentState.totalDurationMillis,
                 useSleepMode = currentState.useSleepMode
-            )
+            ))
 
             // Cập nhật thông báo
             val notificationManager =
@@ -164,17 +166,17 @@ class MediaTimerService : Service() {
      */
     private fun resumeTimer() {
         Log.i(TAG, "resumeTimer: ")
-        val currentState = _timerState.value
+        val currentState = sharedViewModel.timerState.value
         if (currentState is TimerState.Paused) {
             val newEndTimeMillis = System.currentTimeMillis() + currentState.remainingMillis
 
-            _timerState.value = TimerState.Running(
+            sharedViewModel.updateTimerState(TimerState.Running(
                 startTimeMillis = currentState.startTimeMillis,
                 endTimeMillis = newEndTimeMillis,
                 remainingMillis = currentState.remainingMillis,
                 totalDurationMillis = currentState.totalDurationMillis,
                 useSleepMode = currentState.useSleepMode
-            )
+            ))
 
             // Khởi tạo bộ đếm thời gian mới
             executeCountDownTimer(currentState.remainingMillis)
@@ -194,9 +196,9 @@ class MediaTimerService : Service() {
         timer?.cancel()
         timer = object : CountDownTimer(durationMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                val runningState = _timerState.value
+                val runningState = sharedViewModel.timerState.value
                 if (runningState is TimerState.Running) {
-                    _timerState.value = runningState.copy(remainingMillis = millisUntilFinished)
+                    sharedViewModel.updateTimerState(runningState.copy(remainingMillis = millisUntilFinished))
 
                     // Cập nhật thông báo mỗi phút
                     if (millisUntilFinished % 60000 < 1000) {
@@ -222,7 +224,7 @@ class MediaTimerService : Service() {
                 }
 
                 // Cập nhật trạng thái
-                _timerState.value = TimerState.Inactive
+                sharedViewModel.updateTimerState(TimerState.Inactive)
 
                 // Dừng service
                 stopSelf()
@@ -239,15 +241,12 @@ class MediaTimerService : Service() {
         Log.i(TAG, "stopTimer: ")
         timer?.cancel()
 
-        if (_timerState.value !is TimerState.Inactive) {
+        if (sharedViewModel.timerState.value !is TimerState.Inactive) {
             // Nếu đang sử dụng sleep mode, dừng nó
-            if (_timerState.value is TimerState.Running && (_timerState.value as TimerState.Running).useSleepMode ||
-                _timerState.value is TimerState.Paused && (_timerState.value as TimerState.Paused).useSleepMode
-            ) {
+            if (sharedViewModel.timerState is TimerState.Active && (sharedViewModel.timerState as TimerState.Active).useSleepMode) {
                 sleepModeManager.stopSleepMode()
             }
-
-            _timerState.value = TimerState.Inactive
+            sharedViewModel.updateTimerState(TimerState.Inactive)
         }
 
         stopForeground(true)
@@ -384,9 +383,6 @@ class MediaTimerService : Service() {
                 context.startService(intent)
             }
         }
-
-        // todo saving temporary state of the timer in a global variable to be used by other components
-        var timerState: StateFlow<TimerState> = MutableStateFlow<TimerState>(TimerState.Inactive)
 
         /**
          * Helper để tạm dừng hẹn giờ từ bên ngoài service

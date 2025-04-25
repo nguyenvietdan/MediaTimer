@@ -12,6 +12,7 @@ import androidx.compose.runtime.toMutableStateList
 import com.monkey.mediatimer.common.AppSpecificConfig
 import com.monkey.mediatimer.common.MediaInfo
 import com.monkey.mediatimer.utils.getAppNameFromPackage
+import com.monkey.mediatimer.utils.updateOrAddItem
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -34,17 +35,10 @@ class MediaControllerMgr @Inject constructor(@ApplicationContext private val con
 
     fun addOrUpdateMedia(mediaController: MediaController) {
         // todo checking add package to it
-        Log.i(TAG, "addOrUpdateMedia: before")
         val metadata = mediaController.metadata
         val packageName = mediaController.packageName
-        val appName = getAppNameFromPackage(context, packageName)
-        val title = metadata?.description?.title?.toString() ?: "Unknown"
-        val artist =
-            metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "Unknown"
-        val artIcon = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
 
         val durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.coerceAtLeast(0L) ?: 0L
-        val state = mediaController.playbackState?.state ?: PlaybackState.STATE_NONE
         val currentPosition = mediaController.playbackState?.let {
             val timeDelta =
                 SystemClock.elapsedRealtime() - it.lastPositionUpdateTime // Calculate time passed since last update
@@ -52,36 +46,22 @@ class MediaControllerMgr @Inject constructor(@ApplicationContext private val con
         }?.coerceIn(0, durationMs) ?: 0L
         val appConfig = AppSpecificConfig.getAppConfig(packageName)
 
-        Log.i(
-            TAG, "addOrUpdateMedia: checking icon ${artIcon}" +
-                    " state: ${mediaController.playbackState?.state}" +
-                    " currentPosition: $currentPosition"
-        )
         val newActiveMedias = _activeMedias.value.toMutableStateList()
-        val index = newActiveMedias.indexOfFirst { it.packageName == packageName }
-        val id = if (index != -1) {
-            newActiveMedias[index].id
-        } else _currentIndex++
         val media = MediaInfo(
-            id,
-            packageName,
-            appName,
-            title,
-            artist,
-            state,
-            durationMs,
-            currentPosition,
-            mediaController,
-            artIcon,
-            appConfig.icon,
-            appConfig.specialFeatures
+            id = _currentIndex++,
+            packageName = packageName,
+            appName = getAppNameFromPackage(context, packageName),
+            title = metadata?.description?.title?.toString() ?: "Unknown",
+            artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "Unknown",
+            state = mediaController.playbackState?.state ?: PlaybackState.STATE_NONE,
+            duration = durationMs,
+            position = currentPosition,
+            controller = mediaController,
+            artIcon = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART),
+            appIcon = appConfig.icon,
+            specialFeatures = appConfig.specialFeatures
         )
-        if (index != -1) {
-            newActiveMedias[index] = media
-        } else {
-            newActiveMedias.add(media)
-        }
-        //newActiveMedias.updateOrAddItem(media)
+        newActiveMedias.updateOrAddItem(media)
         _activeMedias.value = newActiveMedias.sortedByDescending { it.id }
         Log.i(TAG, "addOrUpdateMedia: $packageName ${activeMedias.value.size}")
     }
@@ -101,13 +81,6 @@ class MediaControllerMgr @Inject constructor(@ApplicationContext private val con
      */
     fun clearAll() {
         _activeMedias.value = emptyList()
-    }
-
-    fun stopAllMedia() {
-        Log.i(TAG, "stopAllMedia: ")
-        _activeMedias.value.forEach { mediaInfo ->
-            mediaInfo.controller?.transportControls?.pause()
-        }
     }
 
     /**
@@ -150,7 +123,6 @@ class MediaControllerMgr @Inject constructor(@ApplicationContext private val con
             AudioManager.FLAG_SHOW_UI
         )
     }
-
 }
 
 @EntryPoint

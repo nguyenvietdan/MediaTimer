@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
@@ -47,7 +49,7 @@ fun TimerScreen(
     val scope = rememberCoroutineScope()
     val selectedMinutes by viewModel.selectedMinutes.collectAsState()
     val maxTimerDurations by viewModel.maxTimeDuration.collectAsState()
-    val timerState by viewModel.timerState.collectAsState()
+    val timerState by viewModel.sharedViewModel.timerState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -103,7 +105,8 @@ fun TimerContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddings)
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -114,7 +117,7 @@ fun TimerContent(
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
-            ActiveTimerScreen(viewModel, 300.dp)
+            ActiveTimerScreen(viewModel, 300.dp, 46.dp)
         } else {
             Text(
                 text = stringResource(R.string.set_timer_to_stop_all_media),

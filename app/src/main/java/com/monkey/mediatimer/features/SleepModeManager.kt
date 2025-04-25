@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -50,7 +51,14 @@ class SleepModeManager @Inject constructor(
         // Khởi tạo giá trị mặc định từ SettingsRepository
         CoroutineScope(Dispatchers.IO).launch {
             sharedPrefs.gradualVolumeReductionEnabled.collect { enabled ->
+                if (enabled && !_sleepModeSettings.value.enableGradualVolumeReduction) restoreVolumeOriginalState()
                 _sleepModeSettings.value.enableGradualVolumeReduction = enabled
+            }
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            sharedPrefs.screenDimmingEnabled.collectLatest { enabled ->
+                if (!enabled && _sleepModeSettings.value.enableScreenDimming) restoreBrightnessOriginalState()
+                _sleepModeSettings.value.enableScreenDimming = enabled
             }
         }
 
@@ -144,10 +152,18 @@ class SleepModeManager @Inject constructor(
      */
     private fun restoreOriginalState() {
         // Khôi phục âm lượng
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+        restoreVolumeOriginalState()
 
         // Khôi phục độ sáng màn hình nếu có quyền
+        restoreBrightnessOriginalState()
+    }
+
+    private fun restoreVolumeOriginalState() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+    }
+
+    private fun restoreBrightnessOriginalState() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (Settings.System.canWrite(context)) {
@@ -182,16 +198,18 @@ class SleepModeManager @Inject constructor(
 
                 if (elapsedTimeMs < totalTimeMs) {
                     // Tính toán âm lượng mới
-                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    if (newVolume < currentVolume) {
-                        elapsedTimeMs = updateIntervalMs
-                        startVolume = currentVolume
-                    }
-                    val volumeReductionRatio = elapsedTimeMs.toFloat() / totalTimeMs
+                    if (_sleepModeSettings.value.enableGradualVolumeReduction) {
+                        val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        if (newVolume < currentVolume) {
+                            elapsedTimeMs = updateIntervalMs
+                            startVolume = currentVolume
+                        }
+                        val volumeReductionRatio = elapsedTimeMs.toFloat() / totalTimeMs
 
-                    newVolume = (startVolume * (1 - volumeReductionRatio)).toInt()
-                    // Đặt âm lượng mới
-                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+                        newVolume = (startVolume * (1 - volumeReductionRatio)).toInt()
+                        // Đặt âm lượng mới
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+                    }
 
                     // Lên lịch cập nhật tiếp theo
                     handler.postDelayed(this, updateIntervalMs)
@@ -210,7 +228,10 @@ class SleepModeManager @Inject constructor(
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (!Settings.System.canWrite(context)) {
-                    Log.i(TAG, "startScreenDimming: there is no permission for write system settings.")
+                    Log.i(
+                        TAG,
+                        "startScreenDimming: there is no permission for write system settings."
+                    )
                     return // Không có quyền thay đổi cài đặt hệ thống
                 }
             }
@@ -226,18 +247,21 @@ class SleepModeManager @Inject constructor(
 
                     if (elapsedTimeMs < totalTimeMs) {
                         // Tính toán độ sáng mới
-                        val brightnessReductionRatio = elapsedTimeMs.toFloat() / totalTimeMs
-                        // Giảm xuống tối thiểu 10% độ sáng ban đầu
-                        val targetBrightness = originalBrightness * 0.1f
-                        val newBrightness = originalBrightness -
-                                (originalBrightness - targetBrightness) * brightnessReductionRatio
 
-                        // Đặt độ sáng mới
-                        Settings.System.putInt(
-                            context.contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS,
-                            (newBrightness * 255).toInt()
-                        )
+                        // Giảm xuống tối thiểu 10% độ sáng ban đầu
+                        if (_sleepModeSettings.value.enableScreenDimming) {
+                            val brightnessReductionRatio = elapsedTimeMs.toFloat() / totalTimeMs
+                            val targetBrightness = originalBrightness * 0.1f
+                            val newBrightness = originalBrightness -
+                                    (originalBrightness - targetBrightness) * brightnessReductionRatio
+
+                            // Đặt độ sáng mới
+                            Settings.System.putInt(
+                                context.contentResolver,
+                                Settings.System.SCREEN_BRIGHTNESS,
+                                (newBrightness * 255).toInt()
+                            )
+                        }
 
                         // Lên lịch cập nhật tiếp theo
                         handler.postDelayed(this, updateIntervalMs)
@@ -290,7 +314,7 @@ class SleepModeManager @Inject constructor(
      */
     data class SleepModeSettings(
         var enableGradualVolumeReduction: Boolean = false,
-        val enableScreenDimming: Boolean = true,
+        var enableScreenDimming: Boolean = true,
         val stopMediaAtEnd: Boolean = true,
         val fadeOutDurationSeconds: Int = 30
     )

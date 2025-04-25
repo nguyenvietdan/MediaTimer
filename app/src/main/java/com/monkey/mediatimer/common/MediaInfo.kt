@@ -7,14 +7,14 @@ import android.media.session.PlaybackState
 // todo move to data late
 
 data class MediaInfo(
-    val id: Int,
+    var id: Int,
     val packageName: String,
     val appName: String,
     val title: String,
     val artist: String,
-    val state: Int,
+    var state: Int,
     val duration: Long = 0L,
-    val position: Long = 0L,
+    var position: Long = 0L,
     val controller: MediaController? = null,
     val artIcon: Bitmap? = null,
     val appIcon: Int? = null,

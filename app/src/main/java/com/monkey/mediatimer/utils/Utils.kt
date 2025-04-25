@@ -9,6 +9,8 @@ import android.text.TextUtils.isEmpty
 import com.monkey.mediatimer.common.MediaInfo
 import java.util.concurrent.TimeUnit
 
+val isDebug = false
+
 fun formatTimeDisplay(durationMs: Long): String {
     // todo checking format for hour
     val minutes = TimeUnit.MILLISECONDS.toMinutes(durationMs)
@@ -29,6 +31,7 @@ fun getAppNameFromPackage(context: Context, packageName: String): String {
 fun MutableList<MediaInfo>.updateOrAddItem(item: MediaInfo) {
     val index = this.indexOfFirst { it.packageName == item.packageName }
     if (index != -1) {
+        item.id = this[index].id
         this[index] = item
     }
     else this.add(item)
